@@ -4,8 +4,8 @@ import time
 import numpy as np
 import requests
 import os
+from src.ingest.ingest import full_fetch_ohlcv
 
-exchange = ccxt.okx({"enableRateLimit": True})
 
 TICK_SIZE = "5m"
 CAPS_PATH = "data/caps_by_symbol.csv"
@@ -15,18 +15,6 @@ def cov_lag(r, k):
 
 def corr_lag(r, k):
     return np.corrcoef(r[:-k], r[k:])[0,1]
-
-def full_fetch_ohlcv(sym: str, tf: str, since_ms: int, lim: int = 300):
-    out = []
-    while True:
-        batch = exchange.fetch_ohlcv(symbol=sym, timeframe=tf, since=since_ms, limit=lim)
-        if not batch:
-            break
-        out.extend(batch)
-        since_ms = batch[-1][0] + 1
-        if len(batch) < lim:
-            break
-    return pd.DataFrame(out, columns=["ts", "open", "high", "low", "close", "volume"])
 
 def load_or_fetch_caps():
     if os.path.exists(CAPS_PATH):
@@ -57,7 +45,7 @@ def define_universe_by_liquidity(
     rows = []
     for sym in symbols:
         try:
-            ohlcv = full_fetch_ohlcv(sym, timeframe, since_ms)
+            ohlcv = full_fetch_ohlcv(exchange,sym, timeframe, since_ms)
         except Exception:
             continue
         if len(ohlcv) < lookback_bars:
@@ -139,7 +127,7 @@ def sweep_universe_for_mr(
 
     for sym in syms:
         try:
-            df = full_fetch_ohlcv(sym=sym, tf=tick_size, since_ms=since_ms, lim=300)
+            df = full_fetch_ohlcv(exchange,sym=sym, tf=tick_size, since_ms=since_ms, lim=300)
         except Exception:
             continue
 
@@ -241,7 +229,7 @@ def fetch_closes_matrix(exchange, symbols, tick_size="5m", days=30, limit=300):
     series = {}
     for sym in symbols:
         try:
-            df = full_fetch_ohlcv(sym=sym, tf=tick_size, since_ms=since_ms, lim=limit)
+            df = full_fetch_ohlcv(exchange,sym=sym, tf=tick_size, since_ms=since_ms, lim=limit)
         except Exception:
             continue
         if df.empty:
@@ -262,7 +250,7 @@ def fetch_closes_matrix(exchange, symbols, tick_size="5m", days=30, lim=300):
     series = {}
     for sym in symbols:
         try:
-            df = full_fetch_ohlcv(sym=sym, tf=tick_size, since_ms=since_ms, lim=lim)
+            df = full_fetch_ohlcv(exchange,sym=sym, tf=tick_size, since_ms=since_ms, lim=lim)
         except Exception:
             continue
         if df.empty:
@@ -371,30 +359,31 @@ def run_simple_xsmr_backtest(
     }
     return out
 
+if __name__ == "__main__":
+    exchange = ccxt.okx({"enableRateLimit": True})
+    u_liq = define_universe_by_liquidity(exchange, number_of_tickers=200, timeframe="5m", lookback_bars=288)
+    caps = load_or_fetch_caps()
+    u = restrict_universe_by_max_market_cap(u_liq, max_market_cap_usd=10e9, caps_by_base_symbol=caps)
 
-u_liq = define_universe_by_liquidity(exchange, number_of_tickers=200, timeframe="5m", lookback_bars=288)
-caps = load_or_fetch_caps()
-u = restrict_universe_by_max_market_cap(u_liq, max_market_cap_usd=10e9, caps_by_base_symbol=caps)
+    u.to_csv("data/universe.csv", index=False)
+    print('successfully saved universe')
 
-u.to_csv("data/universe.csv", index=False)
-print('successfully saved universe')
+    bt = run_simple_xsmr_backtest(
+        exchange,
+        u,
+        caps,
+        tick_size="5m",
+        days=30,
+        max_symbols=120,
+        K=288,        # 1 day lookback
+        H=24,         # 2 hour horizon
+        q=0.2,
+        weight_mode="equal",  # start equal to avoid cap noise
+    )
 
-bt = run_simple_xsmr_backtest(
-    exchange,
-    u,
-    caps,
-    tick_size="5m",
-    days=30,
-    max_symbols=120,
-    K=288,        # 1 day lookback
-    H=24,         # 2 hour horizon
-    q=0.2,
-    weight_mode="equal",  # start equal to avoid cap noise
-)
-
-print("assets:", bt["n_assets"])
-print("LS mean:", bt["ls_mean"], "LS std:", bt["ls_std"])
-print("b mean:", bt["b_mean"], "b std:", bt["b_std"])
-print(bt["ls_series"].head())
-print(bt["b_series"].head())
+    print("assets:", bt["n_assets"])
+    print("LS mean:", bt["ls_mean"], "LS std:", bt["ls_std"])
+    print("b mean:", bt["b_mean"], "b std:", bt["b_std"])
+    print(bt["ls_series"].head())
+    print(bt["b_series"].head())
 
