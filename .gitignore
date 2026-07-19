@@ -1,2 +1,5 @@
 /.venv
-/data
+__pycache__/
+*.pyc
+data/derived/*.parquet
+data/derived/close_5m.csv

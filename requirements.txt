@@ -1,0 +1,7 @@
+ccxt
+joblib
+matplotlib
+numpy
+pandas
+pyarrow
+scikit-learn

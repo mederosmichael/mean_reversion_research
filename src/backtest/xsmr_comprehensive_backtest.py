@@ -6,14 +6,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 """
-Goal for tomorrow:
-Design and formalize a trading strategy on the defined test universe that exploits XSMR.
-Implement regime detection and a trade-decision rule conditional on regime state.
-Use Kelly fraction for position sizing.
-Exclude momentum components at this stage. Add later.
-Incorporate transaction costs.
-Build a fully specified backtest pipeline.
-Explore limited cross-validation for hyperparameter selection.
+Cross-sectional mean-reversion backtest on the test universe.
+
+Signal is a cross-sectionally demeaned, volatility-standardized return z-score.
+Entries are conditioned on the HMM regime state and gated by a momentum filter,
+sized by a capped Kelly fraction, and charged transaction costs on turnover.
 """
 
 TICK_SIZE = "5m"
